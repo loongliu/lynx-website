@@ -14,8 +14,8 @@
     "collapsed": true
   },
   {
-    "type": "file",
-    "name": "lynx-recorder",
+    "type": "dir",
+    "name": "recorder",
     "label": "guide.engineering.debugging.lynx-recorder"
   },
   {

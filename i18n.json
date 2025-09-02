@@ -303,6 +303,14 @@
     "en": "Recorder",
     "zh": "Recorder"
   },
+  "guide.engineering.debugging.lynx-recorder-introduction": {
+    "en": "Introduction",
+    "zh": "介绍"
+  },
+  "guide.engineering.debugging.lynx-recorder-usage": {
+    "en": "Usage",
+    "zh": "使用"
+  },
   "guide.engineering.debugging.handle-errors": {
     "en": "Handle Errors in Lynx",
     "zh": "错误处理"

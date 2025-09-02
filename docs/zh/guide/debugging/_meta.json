@@ -2,13 +2,13 @@
   {
     "type": "dir",
     "name": "lynx-devtool",
-    "label": "guide.engineering.debugging.devtool",
+    "label": "guide.engineering.debugging.panels",
     "collapsible": true,
     "collapsed": true
   },
   {
-    "type": "file",
-    "name": "lynx-recorder",
+    "type": "dir",
+    "name": "recorder",
     "label": "guide.engineering.debugging.lynx-recorder"
   },
   {

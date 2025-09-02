@@ -1,0 +1,18 @@
+[
+  {
+    "type": "file",
+    "name": "introduction",
+    "label": "guide.engineering.debugging.lynx-recorder-introduction",
+    "overviewHeaders": [],
+    "collapsible": true,
+    "collapsed": true
+  },
+  {
+    "type": "file",
+    "name": "recorder",
+    "label": "guide.engineering.debugging.lynx-recorder-usage",
+    "overviewHeaders": [],
+    "collapsible": true,
+    "collapsed": true
+  }
+]
