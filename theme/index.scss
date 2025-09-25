@@ -225,21 +225,9 @@ $overview-index-color-dark: #f9f9f9;
   font-size: 14px;
   color: var(--rp-c-text-1);
   font-weight: 500;
-  transition: color 0.2s ease-in, text-decoration 0.2s ease-in;
   text-decoration: none;
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-
-  &::after {
-    content: '';
-    position: relative;
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid white;
-    transition: transform 0.2s ease;
-  }
 }
