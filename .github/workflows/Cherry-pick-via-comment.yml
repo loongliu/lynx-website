@@ -57,15 +57,45 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          # 使用GitHub API获取已合并PR的信息
-          response=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER")
+          # 构建正确的API URL
+          API_URL="https://api.github.com/repos/$REPO/pulls/$PR_NUMBER"
+          echo "API URL: $API_URL"
           
-          merge_commit_sha=$(echo "$response" | grep -o '"merge_commit_sha":"[^"]*' | cut -d'"' -f4)
+          # 使用GitHub API获取已合并PR的信息，并捕获HTTP状态码
+          response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "$API_URL")
           
-          if [ -z "$merge_commit_sha" ]; then
-            echo "错误：无法获取合并提交SHA，可能PR未合并"
+          # 提取HTTP状态码
+          http_status=$(echo "$response" | grep 'HTTP_STATUS:' | cut -d':' -f2)
+          # 提取响应体
+          response_body=$(echo "$response" | sed '/HTTP_STATUS:/d')
+          
+          # 输出调试信息
+          echo "HTTP状态码: $http_status"
+          echo "响应体预览: $(echo "$response_body" | cut -c1-100) ..."
+          
+          # 检查API调用是否成功
+          if [[ "$http_status" != "200" ]]; then
+            echo "错误：API调用失败，状态码: $http_status"
+            echo "详细错误: $response_body"
+            exit 1
+          fi
+          
+          # 提取合并提交SHA
+          merge_commit_sha=$(echo "$response_body" | grep -o '"merge_commit_sha":"[^"]*' | cut -d'"' -f4)
+          
+          # 检查PR状态
+          pr_state=$(echo "$response_body" | grep -o '"state":"[^"]*' | cut -d'"' -f4)
+          is_merged=$(echo "$response_body" | grep -o '"merged":[^"*' | cut -d':' -f2 | tr -d ' ')  
+          
+          echo "PR状态: $pr_state"
+          echo "是否已合并: $is_merged"
+          
+          if [ -z "$merge_commit_sha" ] || [[ "$is_merged" != "true" ]]; then
+            echo "错误：PR未合并或无法获取合并提交SHA"
             exit 1
           fi
           
