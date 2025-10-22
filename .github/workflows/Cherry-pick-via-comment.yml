@@ -99,8 +99,9 @@ jobs:
               continue
             fi
 
-            # Create new branch name
-            new_branch="cherry-pick-$branch-pr-$PR_NUMBER"
+            # Create new branch name with timestamp to avoid duplicates
+            timestamp=$(date +%s)
+            new_branch="cherry-pick-$branch-pr-$PR_NUMBER-$timestamp"
             
             # Create and switch to new branch
             git checkout -b "$new_branch" "origin/$branch"
