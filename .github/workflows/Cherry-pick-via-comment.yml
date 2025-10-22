@@ -68,30 +68,11 @@ jobs:
             -H "Accept: application/vnd.github.v3+json" \
             "$API_URL")
           echo "原始响应: $response"
+          merge_commit_sha=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merge_commit_sha'])")
+          is_merged=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merged'])")
 
-          # 提取HTTP状态码
-          http_status=$(echo "$response" | grep 'HTTP_STATUS:' | cut -d':' -f2)
-          # 提取响应体
-          response_body=$(echo "$response" | sed '/HTTP_STATUS:/d')
-
-          # 输出调试信息
-          echo "HTTP状态码: $http_status"
-          echo "响应体预览: $(echo "$response_body" | cut -c1-100) ..."
-
-          # 检查API调用是否成功
-          if [[ "$http_status" != "200" ]]; then
-            echo "错误：API调用失败，状态码: $http_status"
-            echo "详细错误: $response_body"
-            exit 1
-          fi
-
-          # 提取合并提交SHA
-          merge_commit_sha=$(echo "$response_body" | sed -n 's/.*"merge_commit_sha":"\([^\"]*\)".*/\1/p')
-          # 修复正则表达式错误
-          is_merged=$(echo "$response_body" | grep -o '"merged":[[:space:]]*\(true\|false\)' | cut -d':' -f2 | tr -d ' ')
-
+          echo "合并提交SHA: $merge_commit_sha"
           echo "是否已合并: $is_merged"
-          echo "merge_commit_sha: $merge_commit_sha"
 
           if [ -z "$merge_commit_sha" ] || [[ "$is_merged" != "true" ]]; then
             echo "错误：PR未合并或无法获取合并提交SHA"
