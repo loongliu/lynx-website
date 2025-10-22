@@ -72,7 +72,7 @@ jobs:
           echo "合并提交SHA: $merge_commit_sha"
           echo "是否已合并: $is_merged"
 
-          if [ -z "$merge_commit_sha" ] || [[ "$is_merged" != "true" ]]; then
+          if [ -z "$merge_commit_sha" ] || [[ "$is_merged" != "True" && "$is_merged" != "true" ]]; then
             echo "错误：PR未合并或无法获取合并提交SHA"
             exit 1
           fi
