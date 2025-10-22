@@ -65,7 +65,7 @@ jobs:
 
           # 使用GitHub API获取已合并PR的信息，并捕获HTTP状态码
           response=$(curl -s "$API_URL")
-          echo "原始响应: $response"
+          # echo "原始响应: $response"
           merge_commit_sha=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merge_commit_sha'])")
           is_merged=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merged'])")
 
