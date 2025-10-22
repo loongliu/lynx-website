@@ -67,6 +67,7 @@ jobs:
           response=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "$API_URL")
+          echo "原始响应: $response"
 
           # 提取HTTP状态码
           http_status=$(echo "$response" | grep 'HTTP_STATUS:' | cut -d':' -f2)
