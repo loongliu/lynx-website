@@ -85,14 +85,10 @@ jobs:
           fi
 
           # 提取合并提交SHA
-          merge_commit_sha=$(echo "$response_body" | grep -o '"merge_commit_sha":"[^"]*' | cut -d'"' -f4)
-
-          # 检查PR状态 - 使用更安全的方式提取JSON值
-          pr_state=$(echo "$response_body" | grep -o '"state":[[:space:]]*\(true\|false\)' | cut -d':' -f2 | tr -d ' ')
+          merge_commit_sha=$(echo "$response_body" | sed -n 's/.*"merge_commit_sha":"\([^\"]*\)".*/\1/p')
           # 修复正则表达式错误
           is_merged=$(echo "$response_body" | grep -o '"merged":[[:space:]]*\(true\|false\)' | cut -d':' -f2 | tr -d ' ')
 
-          echo "PR状态: $pr_state"
           echo "是否已合并: $is_merged"
           echo "merge_commit_sha: $merge_commit_sha"
 
