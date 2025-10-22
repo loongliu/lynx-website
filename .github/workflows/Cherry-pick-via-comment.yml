@@ -6,7 +6,7 @@ on:
 
 jobs:
   cherry-pick:
-    # 仅处理已合并PR的评论，且评论以/cherry-pick开头
+    # Only process comments on merged PRs that start with /cherry-pick
     if: ${{ github.event.issue.pull_request && contains(github.event.comment.body, '/cherry-pick') }}
     runs-on: ubuntu-latest
     permissions:
@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # 获取完整历史记录，cherry-pick需要
+          fetch-depth: 0 # Get complete history for cherry-pick
 
       - name: Setup Git
         run: |
@@ -40,15 +40,15 @@ jobs:
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          # 使用正则表达式提取分支名
+          # Use regex to extract branch names
           if [[ "$COMMENT_BODY" =~ /cherry-pick[[:space:]]+([^[:space:],]+(,[^[:space:],]+)*) ]]; then
             branches="${BASH_REMATCH[1]}"
-            # 将逗号分隔转换为空格分隔
+            # Convert comma-separated to space-separated
             branches="${branches//,/ }"
-            echo "提取到的分支: $branches"
+            echo "Extracted branches: $branches"
             echo "branches=$branches" >> $GITHUB_OUTPUT
           else
-            echo "未找到目标分支"
+            echo "No target branches found"
             echo "branches=" >> $GITHUB_OUTPUT
           fi
 
@@ -59,25 +59,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          # 构建正确的API URL
+          # Build correct API URL
           API_URL="https://api.github.com/repos/$REPO/pulls/$PR_NUMBER"
           echo "API URL: $API_URL"
 
-          # 使用GitHub API获取已合并PR的信息，并捕获HTTP状态码
+          # Use GitHub API to get merged PR info
           response=$(curl -s "$API_URL")
-          # echo "原始响应: $response"
+          # echo "Raw response: $response"
           merge_commit_sha=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merge_commit_sha'])")
           is_merged=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin)['merged'])")
 
-          echo "合并提交SHA: $merge_commit_sha"
-          echo "是否已合并: $is_merged"
+          echo "Merge commit SHA: $merge_commit_sha"
+          echo "Is merged: $is_merged"
 
           if [ -z "$merge_commit_sha" ] || [[ "$is_merged" != "True" && "$is_merged" != "true" ]]; then
-            echo "错误：PR未合并或无法获取合并提交SHA"
+            echo "Error: PR is not merged or cannot get merge commit SHA"
             exit 1
           fi
 
-          echo "合并提交SHA: $merge_commit_sha"
+          echo "Merge commit SHA: $merge_commit_sha"
           echo "commit_sha=$merge_commit_sha" >> $GITHUB_OUTPUT
 
       - name: Cherry-pick to target branches
@@ -91,28 +91,28 @@ jobs:
           created_prs=""
 
           for branch in $TARGET_BRANCHES; do
-            echo "处理分支: $branch"
+            echo "Processing branch: $branch"
             
-            # 检查目标分支是否存在
+            # Check if target branch exists
             if ! git show-ref --verify --quiet refs/remotes/origin/$branch; then
-              echo "警告：分支 $branch 不存在，跳过"
+              echo "Warning: Branch $branch does not exist, skipping"
               continue
             fi
 
-            # 创建新分支名
+            # Create new branch name
             new_branch="cherry-pick-$branch-pr-$PR_NUMBER"
             
-            # 创建并切换到新分支
+            # Create and switch to new branch
             git checkout -b "$new_branch" "origin/$branch"
             
-            # 执行cherry-pick
+            # Execute cherry-pick
             if git cherry-pick -x "$MERGE_COMMIT_SHA"; then
-              echo "成功cherry-pick到 $branch"
+              echo "Successfully cherry-picked to $branch"
               
-              # 推送新分支
+              # Push new branch
               git push origin "$new_branch"
               
-              # 创建PR
+              # Create PR
               pr_response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
                 "https://api.github.com/repos/${{ github.repository }}/pulls" \
@@ -124,19 +124,19 @@ jobs:
                 }")
               
               pr_url=$(echo "$pr_response" | grep -o '"html_url":"[^"]*' | cut -d'"' -f4)
-              echo "创建的PR: $pr_url"
+              echo "Created PR: $pr_url"
               
               created_prs="$created_prs\n- $pr_url"
             else
-              echo "cherry-pick到 $branch 失败，可能存在冲突"
+              echo "Failed to cherry-pick to $branch, conflicts may exist"
               git cherry-pick --abort
             fi
             
-            # 回到初始状态
+            # Return to initial state
             git checkout -
           done
 
-          # 输出创建PR列表
+          # Output created PR list
           if [ -n "$created_prs" ]; then
             echo "pr_list=$created_prs" >> $GITHUB_OUTPUT
           fi
@@ -149,9 +149,9 @@ jobs:
           PR_LIST: ${{ steps.cherry-pick.outputs.pr_list }}
         run: |
           if [ -n "$PR_LIST" ]; then
-            comment="✅ Cherry-pick 操作完成！已创建以下PR：$PR_LIST"
+            comment="✅ Cherry-pick operation completed! Created the following PRs: $PR_LIST"
           else
-            comment="❌ Cherry-pick 操作未创建任何PR，请检查目标分支是否存在或是否有冲突。"
+            comment="❌ Cherry-pick operation did not create any PRs, please check if the target branches exist or if there are conflicts."
           fi
 
           curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
