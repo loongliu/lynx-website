@@ -457,6 +457,91 @@ async function getSummaryComment(repo, issueNumber) {
   return findBotComment(repo, issueNumber, SUMMARY_MARKER);
 }
 
+function nextActionForStatus(status, errors = []) {
+  const normalized = String(status || '').toLowerCase();
+  const hasUnmergedSource = errors.some((error) =>
+    error.includes('is not merged'),
+  );
+  const hasWorkflowFiles = errors.some((error) =>
+    error.includes('changes GitHub Actions workflow files'),
+  );
+
+  if (normalized === 'invalid' && hasUnmergedSource) {
+    return 'Wait for the source PR to merge, then edit or reopen this request to revalidate. If validation passes, a maintainer must add `cherry-pick:approved`.';
+  }
+  if (normalized === 'invalid' && hasWorkflowFiles) {
+    return 'Handle this backport manually, or use a separately approved process with a token that has workflow permission.';
+  }
+  if (normalized === 'invalid') {
+    return 'Fix the request fields, then edit or reopen this issue to revalidate. If validation passes, a maintainer must add `cherry-pick:approved`.';
+  }
+  if (normalized === 'pending approval') {
+    return 'A maintainer with write, maintain, or admin permission should add `cherry-pick:approved`.';
+  }
+  if (normalized === 'approved') {
+    return 'Waiting for workflow execution to start.';
+  }
+  if (normalized === 'running') {
+    return 'Wait for target results. The summary table updates as each target finishes.';
+  }
+  if (normalized === 'pr-created') {
+    return 'Review and merge the generated cherry-pick PRs.';
+  }
+  if (normalized === 'partial') {
+    return 'Fix failed or blocked targets, then remove and re-add `cherry-pick:approved` to retry. Successful targets will be skipped.';
+  }
+  if (normalized === 'failed') {
+    return 'Fix the failure, then remove and re-add `cherry-pick:approved` to retry.';
+  }
+  return '';
+}
+
+function renderValidationFailureComment(errors, workflowUrl) {
+  const hasUnmergedSource = errors.some((error) =>
+    error.includes('is not merged'),
+  );
+  const hasWorkflowFiles = errors.some((error) =>
+    error.includes('changes GitHub Actions workflow files'),
+  );
+  const header = hasWorkflowFiles
+    ? 'Cherry-pick request is invalid for automatic execution.'
+    : 'Cherry-pick request is invalid and will not execute yet.';
+  const nextSteps = hasWorkflowFiles
+    ? [
+        'Handle this backport manually, or use a separately approved process with a token that has workflow permission.',
+        'Do not retry this request with the default cherry-pick workflow unless the source PR no longer changes workflow files.',
+      ]
+    : hasUnmergedSource
+      ? [
+          'Wait until the source PR is merged into the default branch.',
+          'After it is merged, edit this request issue or reopen it to trigger validation again.',
+          'If validation passes, the request will move back to `cherry-pick:pending-approval`.',
+          'A maintainer must add `cherry-pick:approved` again before execution starts.',
+        ]
+      : [
+          'Edit this request issue and fix the fields above.',
+          'Save the issue, or reopen it, to trigger validation again.',
+          'If validation passes, the request will move back to `cherry-pick:pending-approval`.',
+          'A maintainer must add `cherry-pick:approved` before execution starts.',
+        ];
+
+  return [
+    header,
+    '',
+    'Validation errors:',
+    ...errors.map((error) => `- ${error}`),
+    '',
+    'Next steps:',
+    ...nextSteps.map((step) => `- ${step}`),
+    '',
+    `Workflow run: ${workflowUrl}`,
+  ].join('\n');
+}
+
+function renderWorkflowRunLine() {
+  return `Workflow run: ${workflowRunUrl()}`;
+}
+
 function renderSummary({
   requestIssue,
   sourcePr,
@@ -491,6 +576,7 @@ function renderSummary({
   const rows = targets.map((target) => {
     return `| \`${markdownTableCell(target.branch)}\` | ${markdownTableCell(target.status || 'Pending')} | ${markdownTableCell(target.detail || '')} |`;
   });
+  const nextAction = nextActionForStatus(status, errors);
 
   const body = [
     ...markerLines,
@@ -498,6 +584,7 @@ function renderSummary({
     '## Cherry-pick request summary',
     '',
     `Status: **${status}**`,
+    nextAction ? `Next action: ${nextAction}` : '',
     '',
     `- Request issue: #${requestIssue}`,
     sourcePr ? `- Source PR: #${sourcePr}` : '',
@@ -666,7 +753,17 @@ async function validateCommand() {
     await createIssueComment(
       repo,
       issueNumber,
-      `Cherry-pick request was closed. Closed requests will not start new execution.\n\nWorkflow run: ${workflowRunUrl()}`,
+      [
+        'Cherry-pick request was closed.',
+        '',
+        'Closed requests will not start new execution.',
+        '',
+        'Next steps:',
+        '- Reopen this request if it should be validated again.',
+        `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+        '',
+        renderWorkflowRunLine(),
+      ].join('\n'),
     );
     setOutput('should_execute', 'false');
     return;
@@ -691,7 +788,16 @@ async function validateCommand() {
     await createIssueComment(
       repo,
       issueNumber,
-      `Cherry-pick approval was removed. The request is back to pending approval.\n\nWorkflow run: ${workflowRunUrl()}`,
+      [
+        'Cherry-pick approval was removed.',
+        '',
+        'The request is back to pending approval.',
+        '',
+        'Next steps:',
+        `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+        '',
+        renderWorkflowRunLine(),
+      ].join('\n'),
     );
     setOutput('should_execute', 'false');
     return;
@@ -755,13 +861,7 @@ async function validateCommand() {
     await createIssueComment(
       repo,
       issueNumber,
-      [
-        'Cherry-pick request is invalid and will not execute.',
-        '',
-        ...errors.map((error) => `- ${error}`),
-        '',
-        `Workflow run: ${workflowRunUrl()}`,
-      ].join('\n'),
+      renderValidationFailureComment(errors, workflowRunUrl()),
     );
     setOutput('should_execute', 'false');
     return;
@@ -785,13 +885,30 @@ async function validateCommand() {
       await createIssueComment(
         repo,
         issueNumber,
-        'Cherry-pick request parameters changed after approval. Approval was cleared and must be re-added by a maintainer.',
+        [
+          'Cherry-pick approval was cleared because request parameters changed.',
+          '',
+          'Changed fields that require re-approval:',
+          '- Source PR, target branches, or risk level.',
+          '',
+          'Next steps:',
+          '- Review the updated request.',
+          `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+          '',
+          renderWorkflowRunLine(),
+        ].join('\n'),
       );
     } else if (approvedSnapshot?.fingerprint) {
-      await createIssueComment(
+      await upsertSummary(
         repo,
         issueNumber,
-        'Cherry-pick request reason was updated without changing the approved source, targets, or risk.',
+        renderSummary({
+          ...summaryBase,
+          status: 'Pending approval',
+          approvedFingerprint: approvedSnapshot?.fingerprint,
+          approvedBy: approvedSnapshot?.approvedBy,
+          approvedAt: approvedSnapshot?.approvedAt,
+        }),
       );
     }
   }
@@ -808,7 +925,15 @@ async function validateCommand() {
       await createIssueComment(
         repo,
         issueNumber,
-        'Cherry-pick execution is already running. New approval trigger ignored.',
+        [
+          'Cherry-pick execution is already running. New approval trigger was ignored.',
+          '',
+          'Next steps:',
+          '- Wait for the running workflow to finish.',
+          '- If it fails or is interrupted, remove and re-add `cherry-pick:approved` to retry.',
+          '',
+          renderWorkflowRunLine(),
+        ].join('\n'),
       );
       setOutput('should_execute', 'false');
       return;
@@ -820,7 +945,18 @@ async function validateCommand() {
       await createIssueComment(
         repo,
         issueNumber,
-        `@${approver} does not have write, maintain, or admin permission. Approval label was removed.`,
+        [
+          'Approval was not accepted.',
+          '',
+          `@${approver} does not have write, maintain, or admin permission for this repository.`,
+          `The \`${APPROVED_LABEL}\` label was removed.`,
+          '',
+          'Next steps:',
+          '- Ask a maintainer with write, maintain, or admin permission to review this request.',
+          `- That maintainer should add \`${APPROVED_LABEL}\` if the request is approved.`,
+          '',
+          renderWorkflowRunLine(),
+        ].join('\n'),
       );
       setOutput('should_execute', 'false');
       return;
@@ -841,7 +977,15 @@ async function validateCommand() {
     await createIssueComment(
       repo,
       issueNumber,
-      `Cherry-pick request approved by @${approver}. Execution will start.\n\nWorkflow run: ${workflowRunUrl()}`,
+      [
+        `Cherry-pick request approved by @${approver}. Execution will start.`,
+        '',
+        'Next steps:',
+        '- Wait for the execution workflow to start.',
+        '- The summary comment will show target progress and final results.',
+        '',
+        renderWorkflowRunLine(),
+      ].join('\n'),
     );
     setOutput('request_fingerprint', currentFingerprint);
     setOutput('source_pr', String(parsed.sourcePr));
@@ -948,6 +1092,54 @@ function shortErrorMessage(error) {
       .trim(),
     2000,
   );
+}
+
+function renderFinalResultComment(finalState, workflowUrl) {
+  if (finalState === 'cherry-pick:pr-created') {
+    return [
+      'Cherry-pick request completed successfully.',
+      '',
+      'Result:',
+      'All targets were created or already existed.',
+      '',
+      'Next steps:',
+      '- Review and merge the generated cherry-pick PRs.',
+      '- This request issue will be closed automatically.',
+      '',
+      `Workflow run: ${workflowUrl}`,
+    ].join('\n');
+  }
+
+  if (finalState === 'cherry-pick:partial') {
+    return [
+      'Cherry-pick request completed with partial success.',
+      '',
+      'Result:',
+      'Some targets succeeded, but one or more targets failed, were blocked, or were interrupted.',
+      '',
+      'Next steps:',
+      '- Check the summary table for each target result.',
+      '- Fix blocked or failed targets manually if needed.',
+      `- To retry remaining work, remove and re-add \`${APPROVED_LABEL}\`.`,
+      '- Already successful targets will be skipped by idempotency checks.',
+      '',
+      `Workflow run: ${workflowUrl}`,
+    ].join('\n');
+  }
+
+  return [
+    'Cherry-pick request failed.',
+    '',
+    'Result:',
+    'No target branch completed successfully.',
+    '',
+    'Next steps:',
+    '- Check the failure comments and summary table.',
+    '- Fix the underlying issue.',
+    `- Remove and re-add \`${APPROVED_LABEL}\` to retry after the issue is resolved.`,
+    '',
+    `Workflow run: ${workflowUrl}`,
+  ].join('\n');
 }
 
 async function listPulls(repo, state, extra = '') {
@@ -1165,7 +1357,14 @@ async function executeCommand() {
   await createIssueComment(
     repo,
     issueNumber,
-    `Cherry-pick execution started.\n\nWorkflow run: ${workflowRunUrl()}`,
+    [
+      'Cherry-pick execution started.',
+      '',
+      'Targets will be processed serially from newest to oldest release branch.',
+      'The summary comment will be updated as each target finishes.',
+      '',
+      renderWorkflowRunLine(),
+    ].join('\n'),
   );
   await updateExecutionSummary(repo, issue, context, targets, 'Running');
 
@@ -1223,12 +1422,24 @@ async function executeCommand() {
       }
       if (existing?.kind === 'closed-unmerged') {
         row.status = 'Blocked';
-        row.detail = `Existing closed unmerged PR ${targetDetailLink(existing.pr)}. Manual handling required.`;
+        row.detail = `Existing closed unmerged PR ${targetDetailLink(existing.pr)}.`;
         await updateExecutionSummary(repo, issue, context, targets, 'Running');
         await createIssueComment(
           repo,
           issueNumber,
-          `Cherry-pick for \`${row.branch}\` is blocked by closed unmerged PR ${existing.pr.html_url}. Manual handling required.\n\nWorkflow run: ${workflowRunUrl()}`,
+          [
+            `Cherry-pick for \`${row.branch}\` is blocked.`,
+            '',
+            'Reason:',
+            `An existing generated cherry-pick PR for this source PR and target branch was closed without merging: ${existing.pr.html_url}.`,
+            '',
+            'Next steps:',
+            '- Review why the existing PR was closed.',
+            '- Reopen it or handle this target manually.',
+            '- This workflow will not overwrite or recreate the branch automatically.',
+            '',
+            renderWorkflowRunLine(),
+          ].join('\n'),
         );
         continue;
       }
@@ -1240,7 +1451,19 @@ async function executeCommand() {
         await createIssueComment(
           repo,
           issueNumber,
-          `Cherry-pick for \`${row.branch}\` is blocked because remote branch \`${branchName}\` already exists without an acceptable generated PR.\n\nWorkflow run: ${workflowRunUrl()}`,
+          [
+            `Cherry-pick for \`${row.branch}\` is blocked.`,
+            '',
+            'Reason:',
+            `Remote branch \`${branchName}\` already exists, but no acceptable generated PR was found.`,
+            '',
+            'Next steps:',
+            '- Inspect the remote branch manually.',
+            '- Delete or rename the stale branch if it is safe.',
+            `- Re-add \`${APPROVED_LABEL}\` to retry after cleanup.`,
+            '',
+            renderWorkflowRunLine(),
+          ].join('\n'),
         );
         continue;
       }
@@ -1316,7 +1539,12 @@ async function executeCommand() {
             'Conflicted files:',
             formatConflictList(files),
             '',
-            `Workflow run: ${workflowRunUrl()}`,
+            'Next steps:',
+            '- Resolve this target manually, or prepare a manual cherry-pick PR.',
+            '- If there are remaining targets to retry after cleanup, remove and re-add `cherry-pick:approved`.',
+            '- Already successful targets will be skipped by idempotency checks.',
+            '',
+            renderWorkflowRunLine(),
           ].join('\n'),
         );
         continue;
@@ -1343,11 +1571,14 @@ async function executeCommand() {
             [
               `Cherry-pick for \`${row.branch}\` was blocked by GitHub workflow-file permission rules.`,
               '',
+              'Reason:',
               'The source change modifies `.github/workflows/*`. GitHub does not allow the default `GITHUB_TOKEN` to create or update workflow files without an explicit `workflow` permission.',
               '',
-              'Handle this target manually, or rerun with a separately approved credential that has workflow permission.',
+              'Next steps:',
+              '- Handle this target manually, or use a separately approved credential with workflow permission.',
+              '- Do not retry this request with the default workflow unless the source PR no longer changes workflow files.',
               '',
-              `Workflow run: ${workflowRunUrl()}`,
+              renderWorkflowRunLine(),
             ].join('\n'),
           );
           continue;
@@ -1393,11 +1624,17 @@ async function executeCommand() {
         repo,
         issueNumber,
         [
-          `Cherry-pick execution encountered an unexpected error for \`${row.branch}\`.`,
+          `Cherry-pick execution was interrupted for \`${row.branch}\`.`,
           '',
+          'Reason:',
           shortErrorMessage(error),
           '',
-          `Workflow run: ${workflowRunUrl()}`,
+          'Next steps:',
+          '- Open the workflow run and inspect the logs.',
+          `- If this was a transient GitHub API, rate limit, or runner issue, remove and re-add \`${APPROVED_LABEL}\` to retry.`,
+          '- Already successful targets will be skipped by idempotency checks.',
+          '',
+          renderWorkflowRunLine(),
         ].join('\n'),
       );
     }
@@ -1421,7 +1658,7 @@ async function executeCommand() {
   await createIssueComment(
     repo,
     issueNumber,
-    `Cherry-pick execution completed with status: **${finalStatus}**.\n\nWorkflow run: ${workflowRunUrl()}`,
+    renderFinalResultComment(finalState, workflowRunUrl()),
   );
   if (finalState === 'cherry-pick:pr-created') {
     await closeIssue(repo, issueNumber);
