@@ -1,0 +1,4 @@
+cherry-pick workflow dummy fixture
+
+This file is intentionally isolated from the docs build. It exists only to
+provide a low-conflict source PR for validating cherry-pick automation.
