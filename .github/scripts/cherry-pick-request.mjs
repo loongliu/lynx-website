@@ -880,9 +880,16 @@ function runGit(args, options = {}) {
   });
   if (options.allowFailure) return result;
   if (result.status !== 0) {
-    throw new Error(
-      `git ${args.join(' ')} failed: ${result.stderr || result.stdout}`,
-    );
+    const detail =
+      result.stderr || result.stdout || `exit status ${result.status}`;
+    const error = new Error(`git ${args.join(' ')} failed: ${detail}`);
+    error.git = {
+      args,
+      status: result.status,
+      stdout: result.stdout || '',
+      stderr: result.stderr || '',
+    };
+    throw error;
   }
   return result;
 }
@@ -922,6 +929,31 @@ function formatConflictList(files) {
     lines.push(`- and ${files.length - visible.length} more`);
   }
   return lines.join('\n');
+}
+
+function isWorkflowPermissionPushError(error) {
+  const text = [
+    error?.message,
+    error?.git?.stdout,
+    error?.git?.stderr,
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return (
+    text.includes('refusing to allow a GitHub App to create or update workflow') ||
+    text.includes('without `workflows` permission') ||
+    text.includes('without `workflow` permission')
+  );
+}
+
+function shortErrorMessage(error) {
+  return truncate(
+    [error?.message, error?.git?.stderr, error?.git?.stdout]
+      .filter(Boolean)
+      .join('\n')
+      .trim(),
+    2000,
+  );
 }
 
 async function listPulls(repo, state, extra = '') {
@@ -1296,7 +1328,38 @@ async function executeCommand() {
         continue;
       }
 
-      runGit(['push', 'origin', branchName], { stdio: 'inherit' });
+      try {
+        runGit(['push', 'origin', branchName]);
+      } catch (error) {
+        if (isWorkflowPermissionPushError(error)) {
+          cleanWorkingTree();
+          row.status = 'Blocked';
+          row.detail =
+            'Source change modifies GitHub Actions workflow files; GITHUB_TOKEN cannot push workflow file changes.';
+          await updateExecutionSummary(
+            repo,
+            issue,
+            context,
+            targets,
+            'Running',
+          );
+          await createIssueComment(
+            repo,
+            issueNumber,
+            [
+              `Cherry-pick for \`${row.branch}\` was blocked by GitHub workflow-file permission rules.`,
+              '',
+              'The source change modifies `.github/workflows/*`. GitHub does not allow the default `GITHUB_TOKEN` to create or update workflow files without an explicit `workflow` permission.',
+              '',
+              'Handle this target manually, or rerun with a separately approved credential that has workflow permission.',
+              '',
+              `Workflow run: ${workflowRunUrl()}`,
+            ].join('\n'),
+          );
+          continue;
+        }
+        throw error;
+      }
       const pr = await createPull(
         repo,
         renderPrTitle(row.branch, parsed.sourcePr, validation.sourceTitle),
@@ -1335,12 +1398,18 @@ async function executeCommand() {
         // Best effort cleanup; the next target starts by cleaning again.
       }
       row.status = 'Interrupted';
-      row.detail = error.message;
+      row.detail = shortErrorMessage(error);
       await updateExecutionSummary(repo, issue, context, targets, 'Running');
       await createIssueComment(
         repo,
         issueNumber,
-        `Cherry-pick execution encountered an unexpected error for \`${row.branch}\`.\n\n${error.message}\n\nWorkflow run: ${workflowRunUrl()}`,
+        [
+          `Cherry-pick execution encountered an unexpected error for \`${row.branch}\`.`,
+          '',
+          shortErrorMessage(error),
+          '',
+          `Workflow run: ${workflowRunUrl()}`,
+        ].join('\n'),
       );
     }
   }
