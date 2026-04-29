@@ -340,6 +340,12 @@ async function getPull(repo, number) {
     .data;
 }
 
+async function getPullFiles(repo, number) {
+  return githubPaginate(
+    `/repos/${repo.owner}/${repo.repo}/pulls/${number}/files?per_page=100`,
+  );
+}
+
 async function getRepo(repo) {
   return (await github(`/repos/${repo.owner}/${repo.repo}`)).data;
 }
@@ -550,6 +556,19 @@ async function validateParsedRequest(repo, config, parsed) {
   }
   if (!pull.merge_commit_sha) {
     errors.push(`Source PR #${parsed.sourcePr} has no merge_commit_sha.`);
+  }
+  const files = await getPullFiles(repo, parsed.sourcePr);
+  const workflowFiles = files
+    .map((file) => file.filename)
+    .filter((filename) => filename.startsWith('.github/workflows/'));
+  if (workflowFiles.length > 0) {
+    errors.push(
+      [
+        `Source PR #${parsed.sourcePr} changes GitHub Actions workflow files, which cannot be cherry-picked by the default GITHUB_TOKEN because it lacks the workflow permission.`,
+        `Workflow files: ${workflowFiles.slice(0, 10).join(', ')}${workflowFiles.length > 10 ? `, and ${workflowFiles.length - 10} more` : ''}.`,
+        'Handle this backport manually or with a token that explicitly has workflow permission.',
+      ].join(' '),
+    );
   }
   for (const target of parsed.targets) {
     if (target === repository.default_branch || target === pull.base?.ref) {
