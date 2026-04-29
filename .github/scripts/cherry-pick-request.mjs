@@ -496,7 +496,7 @@ function nextActionForStatus(status, errors = []) {
   return '';
 }
 
-function renderValidationFailureComment(errors, workflowUrl) {
+function renderValidationFailureComment(errors, workflowUrl, options = {}) {
   const hasUnmergedSource = errors.some((error) =>
     error.includes('is not merged'),
   );
@@ -505,6 +505,8 @@ function renderValidationFailureComment(errors, workflowUrl) {
   );
   const header = hasWorkflowFiles
     ? 'Cherry-pick request is invalid for automatic execution.'
+    : options.reopened
+      ? 'Cherry-pick request was reopened and revalidated, but it is still invalid.'
     : 'Cherry-pick request is invalid and will not execute yet.';
   const nextSteps = hasWorkflowFiles
     ? [
@@ -861,7 +863,9 @@ async function validateCommand() {
     await createIssueComment(
       repo,
       issueNumber,
-      renderValidationFailureComment(errors, workflowRunUrl()),
+      renderValidationFailureComment(errors, workflowRunUrl(), {
+        reopened: event.action === 'reopened',
+      }),
     );
     setOutput('should_execute', 'false');
     return;
@@ -1007,6 +1011,22 @@ async function validateCommand() {
       approvedAt: approvedSnapshot?.approvedAt,
     }),
   );
+  if (event.action === 'reopened') {
+    await createIssueComment(
+      repo,
+      issueNumber,
+      [
+        'Cherry-pick request was reopened and revalidated successfully.',
+        '',
+        'The request is back to pending approval.',
+        '',
+        'Next steps:',
+        `- A user with write, maintain, or admin permission should add \`${APPROVED_LABEL}\` if the request is approved.`,
+        '',
+        renderWorkflowRunLine(),
+      ].join('\n'),
+    );
+  }
   setOutput('should_execute', 'false');
 }
 
