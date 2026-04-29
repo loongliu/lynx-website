@@ -1376,11 +1376,6 @@ async function executeCommand() {
         row.detail = `Created PR ${targetDetailLink(pr)}, but failed to add ${GENERATED_LABEL}: ${error.message}`;
       }
       await updateExecutionSummary(repo, issue, context, targets, 'Running');
-      await createIssueComment(
-        repo,
-        issueNumber,
-        `Created cherry-pick PR for \`${row.branch}\`: ${pr.html_url}`,
-      );
     } catch (error) {
       try {
         cleanWorkingTree();
