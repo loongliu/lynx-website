@@ -519,12 +519,16 @@ function renderSummary({
     '| Target branch | Result | Detail |',
     '| --- | --- | --- |',
     ...(rows.length > 0 ? rows : ['| _None_ | Pending | |']),
-    '',
-    errors.length > 0 ? '\n### Errors\n' : '',
-    ...errors.map((error) => `- ${error}`),
+  ].filter((line) => line !== '');
+
+  if (errors.length > 0) {
+    body.push('', '### Errors', '', ...errors.map((error) => `- ${error}`));
+  }
+
+  body.push(
     '',
     'This workflow only creates cherry-pick PRs. It does not bypass review, required checks, CODEOWNERS, or branch protection.',
-  ].filter((line) => line !== '');
+  );
 
   return `${body.join('\n')}\n`;
 }
@@ -1104,7 +1108,7 @@ async function updateExecutionSummary(repo, issue, context, targets, status) {
 
 function targetDetailLink(pr) {
   if (!pr) return '';
-  return `#${pr.number} ${pr.html_url}`;
+  return `[#${pr.number}](${pr.html_url})`;
 }
 
 async function executeCommand() {
