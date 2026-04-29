@@ -519,6 +519,7 @@ function renderSummary({
     '| Target branch | Result | Detail |',
     '| --- | --- | --- |',
     ...(rows.length > 0 ? rows : ['| _None_ | Pending | |']),
+    '',
     errors.length > 0 ? '\n### Errors\n' : '',
     ...errors.map((error) => `- ${error}`),
     '',
@@ -858,17 +859,6 @@ async function validateCommand() {
       approvedAt: approvedSnapshot?.approvedAt,
     }),
   );
-  if (
-    event.action === 'opened' ||
-    event.action === 'edited' ||
-    event.action === 'reopened'
-  ) {
-    await createIssueComment(
-      repo,
-      issueNumber,
-      `Cherry-pick request validated and waiting for approval.\n\nA maintainer with write, maintain, or admin permission can add \`${APPROVED_LABEL}\` to execute it.\n\nWorkflow run: ${workflowRunUrl()}`,
-    );
-  }
   setOutput('should_execute', 'false');
 }
 
