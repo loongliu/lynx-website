@@ -575,6 +575,32 @@ async function upsertSourcePrStatus(
   else await createIssueComment(repo, parsed.sourcePr, body);
 }
 
+async function tryUpsertSourcePrStatus(
+  repo,
+  parsed,
+  issue,
+  validation,
+  finalStatus,
+) {
+  try {
+    await upsertSourcePrStatus(repo, parsed, issue, validation, finalStatus);
+  } catch (error) {
+    const message = `Unable to update source PR #${parsed?.sourcePr} status comment: ${error.message}`;
+    console.warn(message);
+    try {
+      await createIssueComment(
+        repo,
+        issue.number,
+        `${message}\n\nThe request issue remains the source of truth.\n\nWorkflow run: ${workflowRunUrl()}`,
+      );
+    } catch (commentError) {
+      console.warn(
+        `Unable to write source PR status warning to request issue: ${commentError.message}`,
+      );
+    }
+  }
+}
+
 async function validateParsedRequest(repo, config, parsed) {
   const repository = await getRepo(repo);
   const pull = await getPull(repo, parsed.sourcePr);
@@ -878,7 +904,7 @@ async function validateCommand() {
       approvedAt: approvedSnapshot?.approvedAt,
     }),
   );
-  await upsertSourcePrStatus(repo, parsed, issue, validation, null);
+  await tryUpsertSourcePrStatus(repo, parsed, issue, validation, null);
   if (
     event.action === 'opened' ||
     event.action === 'edited' ||
@@ -1381,7 +1407,7 @@ async function executeCommand() {
   issue = await getCurrentIssue(repo, issueNumber);
   await setStateLabel(repo, issue, finalState);
   await updateExecutionSummary(repo, issue, context, targets, finalStatus);
-  await upsertSourcePrStatus(repo, parsed, issue, validation, finalStatus);
+  await tryUpsertSourcePrStatus(repo, parsed, issue, validation, finalStatus);
   await createIssueComment(
     repo,
     issueNumber,
