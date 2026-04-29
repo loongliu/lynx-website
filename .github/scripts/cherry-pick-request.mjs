@@ -467,16 +467,16 @@ function nextActionForStatus(status, errors = []) {
   );
 
   if (normalized === 'invalid' && hasUnmergedSource) {
-    return 'Wait for the source PR to merge, then edit or reopen this request to revalidate. If validation passes, a maintainer must add `cherry-pick:approved`.';
+    return 'Wait for the source PR to merge, then edit or reopen this request to revalidate. If validation passes, a user with write, maintain, or admin permission must add `cherry-pick:approved`.';
   }
   if (normalized === 'invalid' && hasWorkflowFiles) {
     return 'Handle this backport manually, or use a separately approved process with a token that has workflow permission.';
   }
   if (normalized === 'invalid') {
-    return 'Fix the request fields, then edit or reopen this issue to revalidate. If validation passes, a maintainer must add `cherry-pick:approved`.';
+    return 'Fix the request fields, then edit or reopen this issue to revalidate. If validation passes, a user with write, maintain, or admin permission must add `cherry-pick:approved`.';
   }
   if (normalized === 'pending approval') {
-    return 'A maintainer with write, maintain, or admin permission should add `cherry-pick:approved`.';
+    return 'A user with write, maintain, or admin permission should add `cherry-pick:approved`.';
   }
   if (normalized === 'approved') {
     return 'Waiting for workflow execution to start.';
@@ -516,13 +516,13 @@ function renderValidationFailureComment(errors, workflowUrl) {
           'Wait until the source PR is merged into the default branch.',
           'After it is merged, edit this request issue or reopen it to trigger validation again.',
           'If validation passes, the request will move back to `cherry-pick:pending-approval`.',
-          'A maintainer must add `cherry-pick:approved` again before execution starts.',
+          'A user with write, maintain, or admin permission must add `cherry-pick:approved` again before execution starts.',
         ]
       : [
           'Edit this request issue and fix the fields above.',
           'Save the issue, or reopen it, to trigger validation again.',
           'If validation passes, the request will move back to `cherry-pick:pending-approval`.',
-          'A maintainer must add `cherry-pick:approved` before execution starts.',
+          'A user with write, maintain, or admin permission must add `cherry-pick:approved` before execution starts.',
         ];
 
   return [
@@ -760,7 +760,7 @@ async function validateCommand() {
         '',
         'Next steps:',
         '- Reopen this request if it should be validated again.',
-        `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+        `- A user with write, maintain, or admin permission must add \`${APPROVED_LABEL}\` again before execution starts.`,
         '',
         renderWorkflowRunLine(),
       ].join('\n'),
@@ -794,7 +794,7 @@ async function validateCommand() {
         'The request is back to pending approval.',
         '',
         'Next steps:',
-        `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+        `- A user with write, maintain, or admin permission must add \`${APPROVED_LABEL}\` again before execution starts.`,
         '',
         renderWorkflowRunLine(),
       ].join('\n'),
@@ -893,7 +893,7 @@ async function validateCommand() {
           '',
           'Next steps:',
           '- Review the updated request.',
-          `- A maintainer must add \`${APPROVED_LABEL}\` again before execution starts.`,
+          `- A user with write, maintain, or admin permission must add \`${APPROVED_LABEL}\` again before execution starts.`,
           '',
           renderWorkflowRunLine(),
         ].join('\n'),
@@ -952,8 +952,8 @@ async function validateCommand() {
           `The \`${APPROVED_LABEL}\` label was removed.`,
           '',
           'Next steps:',
-          '- Ask a maintainer with write, maintain, or admin permission to review this request.',
-          `- That maintainer should add \`${APPROVED_LABEL}\` if the request is approved.`,
+          '- Ask a user with write, maintain, or admin permission to review this request.',
+          `- That user should add \`${APPROVED_LABEL}\` if the request is approved.`,
           '',
           renderWorkflowRunLine(),
         ].join('\n'),
