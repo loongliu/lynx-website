@@ -4,13 +4,18 @@ on:
   issues:
     types: [opened, edited, reopened, labeled, unlabeled, closed]
 
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
 concurrency:
   group: cherry-pick-request-${{ github.event.issue.number }}
   cancel-in-progress: false
 
 jobs:
   validate:
-    if: ${{ contains(github.event.issue.labels.*.name, 'cherry-pick:request') || github.event.action == 'opened' }}
+    if: ${{ contains(github.event.issue.labels.*.name, 'cherry-pick:request') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

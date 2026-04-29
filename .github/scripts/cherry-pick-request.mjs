@@ -44,7 +44,17 @@ function loadConfig() {
 }
 
 function repoFromEnv() {
-  const repository = process.env.GITHUB_REPOSITORY;
+  let repository = process.env.GITHUB_REPOSITORY;
+  if (!repository || !repository.includes('/')) {
+    try {
+      const event = process.env.GITHUB_EVENT_PATH
+        ? readJson(process.env.GITHUB_EVENT_PATH)
+        : null;
+      repository = event?.repository?.full_name || repository;
+    } catch {
+      // Keep the original env value and let the explicit validation below fail.
+    }
+  }
   if (!repository || !repository.includes('/')) {
     throw new Error('GITHUB_REPOSITORY must be set to owner/repo.');
   }
@@ -61,7 +71,16 @@ function getEvent() {
 
 function workflowRunUrl() {
   const server = process.env.GITHUB_SERVER_URL || 'https://github.com';
-  const repo = process.env.GITHUB_REPOSITORY || '';
+  let repo = process.env.GITHUB_REPOSITORY || '';
+  if (!repo) {
+    try {
+      repo = process.env.GITHUB_EVENT_PATH
+        ? readJson(process.env.GITHUB_EVENT_PATH)?.repository?.full_name || ''
+        : '';
+    } catch {
+      repo = '';
+    }
+  }
   const runId = process.env.GITHUB_RUN_ID || '';
   if (!repo || !runId) return '';
   return `${server}/${repo}/actions/runs/${runId}`;
@@ -641,6 +660,9 @@ async function validateCommand() {
   const config = loadConfig();
   const event = getEvent();
   const issueNumber = event.issue.number;
+  console.log(
+    `Validating cherry-pick request issue #${issueNumber} in ${repo.repository} for action ${event.action}.`,
+  );
   let issue = await getCurrentIssue(repo, issueNumber);
   const noopReason = shouldNoopValidate(event, issue);
   if (noopReason) {
@@ -1089,6 +1111,9 @@ async function executeCommand() {
   const config = loadConfig();
   const event = getEvent();
   const issueNumber = event.issue.number;
+  console.log(
+    `Executing cherry-pick request issue #${issueNumber} in ${repo.repository}.`,
+  );
   let issue = await getCurrentIssue(repo, issueNumber);
   if (!hasLabel(issue, TYPE_LABEL)) {
     console.log('Issue is no longer a cherry-pick request.');
@@ -1504,11 +1529,7 @@ async function main() {
 }
 
 async function commentWorkflowFailure(error) {
-  if (
-    !process.env.GITHUB_TOKEN ||
-    !process.env.GITHUB_EVENT_PATH ||
-    !process.env.GITHUB_REPOSITORY
-  ) {
+  if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_EVENT_PATH) {
     return;
   }
   try {
