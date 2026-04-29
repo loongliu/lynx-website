@@ -1,0 +1,4 @@
+cherry-pick workflow dummy fixture 2
+
+This isolated file is used to validate the cherry-pick request workflow without
+touching build inputs or GitHub Actions workflow files.
