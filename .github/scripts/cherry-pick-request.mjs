@@ -8,7 +8,6 @@ import { spawnSync } from 'node:child_process';
 const CONFIG_PATH = '.github/cherry-pick-config.json';
 const ISSUE_FORM_PATH = '.github/ISSUE_TEMPLATE/cherry_pick_request.yml';
 const SUMMARY_MARKER = '<!-- cherry-pick-request-summary -->';
-const SOURCE_STATUS_PREFIX = '<!-- cherry-pick-source-pr-status:';
 const GENERATED_MARKER_PREFIX = '<!-- cherry-pick-generated:';
 const APPROVED_FINGERPRINT_RE =
   /<!-- cherry-pick-approved-fingerprint:\s*([a-f0-9]+)\s*-->/i;
@@ -312,10 +311,6 @@ function generatedMarker(sourcePr, target, requestIssue) {
   return `<!-- cherry-pick-generated: source-pr=${sourcePr} target=${target} request=${requestIssue} -->`;
 }
 
-function sourceStatusMarker(requestIssue) {
-  return `${SOURCE_STATUS_PREFIX} request-${requestIssue} -->`;
-}
-
 function isBotActor(comment) {
   const user = comment?.user;
   return (
@@ -539,66 +534,6 @@ function initialTargets(parsed) {
     status: 'Pending',
     detail: 'Waiting for approval',
   }));
-}
-
-async function upsertSourcePrStatus(
-  repo,
-  parsed,
-  issue,
-  validation,
-  finalStatus,
-) {
-  if (!parsed?.sourcePr) return;
-  const marker = sourceStatusMarker(issue.number);
-  const comments = await listIssueComments(repo, parsed.sourcePr);
-  const existing = comments.find(
-    (comment) =>
-      isBotActor(comment) && String(comment.body || '').includes(marker),
-  );
-  const targetList = parsed.targets.map((target) => `\`${target}\``).join(', ');
-  const lines = [
-    marker,
-    '',
-    finalStatus
-      ? `Cherry-pick request #${issue.number} finished with status: **${finalStatus}**.`
-      : `Cherry-pick request #${issue.number} validated and is waiting for approval.`,
-    '',
-    `- Target branches: ${targetList}`,
-    `- Risk level: ${parsed.risk}`,
-    validation?.sourceCommit
-      ? `- Source commit: \`${validation.sourceCommit}\``
-      : '',
-    workflowRunUrl() ? `- Workflow run: ${workflowRunUrl()}` : '',
-  ].filter(Boolean);
-  const body = `${lines.join('\n')}\n`;
-  if (existing) await updateIssueComment(repo, existing.id, body);
-  else await createIssueComment(repo, parsed.sourcePr, body);
-}
-
-async function tryUpsertSourcePrStatus(
-  repo,
-  parsed,
-  issue,
-  validation,
-  finalStatus,
-) {
-  try {
-    await upsertSourcePrStatus(repo, parsed, issue, validation, finalStatus);
-  } catch (error) {
-    const message = `Unable to update source PR #${parsed?.sourcePr} status comment: ${error.message}`;
-    console.warn(message);
-    try {
-      await createIssueComment(
-        repo,
-        issue.number,
-        `${message}\n\nThe request issue remains the source of truth.\n\nWorkflow run: ${workflowRunUrl()}`,
-      );
-    } catch (commentError) {
-      console.warn(
-        `Unable to write source PR status warning to request issue: ${commentError.message}`,
-      );
-    }
-  }
 }
 
 async function validateParsedRequest(repo, config, parsed) {
@@ -904,7 +839,6 @@ async function validateCommand() {
       approvedAt: approvedSnapshot?.approvedAt,
     }),
   );
-  await tryUpsertSourcePrStatus(repo, parsed, issue, validation, null);
   if (
     event.action === 'opened' ||
     event.action === 'edited' ||
@@ -1407,7 +1341,6 @@ async function executeCommand() {
   issue = await getCurrentIssue(repo, issueNumber);
   await setStateLabel(repo, issue, finalState);
   await updateExecutionSummary(repo, issue, context, targets, finalStatus);
-  await tryUpsertSourcePrStatus(repo, parsed, issue, validation, finalStatus);
   await createIssueComment(
     repo,
     issueNumber,
